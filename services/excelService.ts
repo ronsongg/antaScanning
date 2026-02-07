@@ -69,3 +69,9 @@ export const exportPendingReport = (data: PackageData[]) => {
   const dateStr = new Date().toISOString().slice(0, 10);
   exportReport(pendingData, `未扫描报表_${dateStr}.xlsx`);
 };
+
+// 导出指定批次的数据
+export const exportBatchReport = (data: PackageData[], batchDate: string) => {
+  const dateStr = batchDate.replace(/\//g, '-'); // 2026/2/7 -> 2026-2-7
+  exportReport(data, `批次报表_${dateStr}.xlsx`);
+};

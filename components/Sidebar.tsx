@@ -12,24 +12,26 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   onViewData: () => void;
-  onExportAll: () => void;
-  onExportScanned: () => void;
-  onExportPending: () => void;
   onImport: (e: React.ChangeEvent<HTMLInputElement>) => void;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
+  onUserManagement?: () => void;
+  onUserProfile?: () => void;
+  onLogout?: () => void;
+  currentUser?: any;
 }
 
 export const Sidebar: React.FC<Props> = ({
   isOpen,
   onClose,
   onViewData,
-  onExportAll,
-  onExportScanned,
-  onExportPending,
   onImport,
   theme,
-  onToggleTheme
+  onToggleTheme,
+  onUserManagement,
+  onUserProfile,
+  onLogout,
+  currentUser
 }) => {
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
 
@@ -39,18 +41,17 @@ export const Sidebar: React.FC<Props> = ({
       label: '数据管理',
       icon: 'database',
       submenu: [
-        { id: 'view-data', label: '查看数据', icon: 'visibility', onClick: onViewData },
+        { id: 'view-data', label: '批次管理', icon: 'inventory', onClick: onViewData },
         { id: 'import', label: '导入Excel', icon: 'upload_file' },
       ]
     },
     {
-      id: 'export',
-      label: '导出报表',
-      icon: 'download',
+      id: 'user',
+      label: '用户中心',
+      icon: 'account_circle',
       submenu: [
-        { id: 'export-all', label: '导出全部', icon: 'description', onClick: onExportAll },
-        { id: 'export-scanned', label: '已扫描记录', icon: 'check_circle', onClick: onExportScanned },
-        { id: 'export-pending', label: '未扫描记录', icon: 'pending', onClick: onExportPending },
+        ...(onUserProfile ? [{ id: 'profile', label: '个人信息', icon: 'person', onClick: onUserProfile }] : []),
+        ...(onUserManagement ? [{ id: 'management', label: '用户管理', icon: 'manage_accounts', onClick: onUserManagement }] : []),
       ]
     },
   ];
@@ -100,6 +101,50 @@ export const Sidebar: React.FC<Props> = ({
             <span className="material-symbols-outlined dark:text-white text-gray-700 text-xl">close</span>
           </button>
         </div>
+
+        {/* User Info Card */}
+        {currentUser && (
+          <div className="mx-4 mt-4 p-4 rounded-lg dark:bg-white/5 bg-gray-100 border dark:border-white/10 border-gray-200">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="size-12 rounded-full dark:bg-primary/20 bg-primary/10 flex items-center justify-center">
+                <span className="material-symbols-outlined text-primary text-2xl">account_circle</span>
+              </div>
+              <div className="flex-1">
+                <p className="dark:text-white text-gray-900 font-bold text-sm">{currentUser.display_name}</p>
+                <p className="dark:text-white/60 text-gray-600 text-xs">@{currentUser.username}</p>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              {onUserProfile && (
+                <button
+                  onClick={() => {
+                    onUserProfile();
+                    onClose();
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1 px-3 py-2 rounded-lg dark:bg-white/5 bg-white dark:hover:bg-white/10 hover:bg-gray-50 transition-colors border dark:border-white/10 border-gray-200"
+                >
+                  <span className="material-symbols-outlined text-primary text-sm">person</span>
+                  <span className="dark:text-white text-gray-900 text-xs font-medium">个人信息</span>
+                </button>
+              )}
+              {onLogout && (
+                <button
+                  onClick={() => {
+                    if (confirm('确定要退出登录吗？')) {
+                      onLogout();
+                      onClose();
+                    }
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1 px-3 py-2 rounded-lg dark:bg-white/5 bg-white dark:hover:bg-white/10 hover:bg-gray-50 transition-colors border dark:border-white/10 border-gray-200"
+                >
+                  <span className="material-symbols-outlined text-error-red text-sm">logout</span>
+                  <span className="text-error-red text-xs font-medium">退出</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Menu Content */}
         <div className="p-4 overflow-y-auto h-[calc(100%-88px)]">

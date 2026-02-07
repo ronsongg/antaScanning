@@ -26,7 +26,7 @@ export const DashboardHeader: React.FC<Props> = ({
 
           <h2 className="dark:text-white text-gray-900 text-sm font-black tracking-tight uppercase">安踏项目扫描系统</h2>
         </div>
-        
+
         {/* Status Indicator */}
         <div className={`flex items-center gap-2 px-2 py-1 rounded-full border ${
             connectionStatus === 'online' ? 'bg-success-green/10 border-success-green/20' :
@@ -40,7 +40,7 @@ export const DashboardHeader: React.FC<Props> = ({
               'bg-error-red shadow-error-red'
           }`}></div>
           <p className={`text-[10px] font-bold uppercase tracking-wider ${
-               connectionStatus === 'online' ? 'text-success-green' : 
+               connectionStatus === 'online' ? 'text-success-green' :
                connectionStatus === 'syncing' ? 'text-yellow-500' :
                'text-error-red'
           }`}>

@@ -1,300 +1,510 @@
 import React, { useState, useMemo } from 'react';
 import { PackageData } from '../types';
+import { exportBatchReport } from '../services/excelService';
 
 interface Props {
   data: PackageData[];
   onClose: () => void;
+  theme?: 'light' | 'dark';
+  activeBatchId?: string | null;
+  onStartScan?: (batchId: string) => void;
+  onDeleteBatch?: (batchId: string) => void;
 }
 
-interface DailyStats {
-  date: string;
-  total: number;
-  scanned: number;
-  missing: number; // 缺货/未扫描
-  items: PackageData[];
+// 按导入批次分组的数据结构
+interface GroupedData {
+  batchId: string;
+  vehicleNumber: string;
+  importDate: string;
+  packages: PackageData[];
+  stats: {
+    total: number;
+    scanned: number;
+    pending: number;
+  };
 }
 
-export const DataViewer: React.FC<Props> = ({ data, onClose }) => {
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState('');
+export const DataViewer: React.FC<Props> = ({ data, onClose, theme = 'dark', activeBatchId, onStartScan, onDeleteBatch }) => {
+  const isDark = theme === 'dark';
 
-  // Group data by import date
-  const dailyStats = useMemo(() => {
-    const statsMap = new Map<string, DailyStats>();
+  // 分组数据：按批次ID（batch_id）分组
+  const groupedData = useMemo(() => {
+    const groups = new Map<string, PackageData[]>();
 
-    data.forEach(item => {
-      // Use imported_at if available, otherwise use scanned_at, fallback to today
-      const dateStr = item.imported_at
-        ? new Date(item.imported_at).toISOString().split('T')[0]
-        : item.scanned_at
-        ? new Date(item.scanned_at).toISOString().split('T')[0]
-        : new Date().toISOString().split('T')[0];
+    data.forEach(pkg => {
+      const batchId = pkg.batch_id || '未知批次';
 
-      if (!statsMap.has(dateStr)) {
-        statsMap.set(dateStr, {
-          date: dateStr,
-          total: 0,
-          scanned: 0,
-          missing: 0,
-          items: []
-        });
+      if (!groups.has(batchId)) {
+        groups.set(batchId, []);
       }
-
-      const stats = statsMap.get(dateStr)!;
-      stats.total++;
-      if (item.status === 'scanned') {
-        stats.scanned++;
-      } else {
-        stats.missing++;
-      }
-      stats.items.push(item);
+      groups.get(batchId)!.push(pkg);
     });
 
-    // Sort by date descending (newest first)
-    return Array.from(statsMap.values()).sort((a, b) =>
-      b.date.localeCompare(a.date)
-    );
+    // 转换为数组并排序（最新的在前）
+    const result: GroupedData[] = Array.from(groups.entries())
+      .map(([batchId, packages]) => {
+        const scanned = packages.filter(p => p.status === 'scanned').length;
+        const firstPackage = packages[0];
+
+        return {
+          batchId,
+          vehicleNumber: firstPackage.vehicle_number || '未知车辆',
+          importDate: firstPackage.imported_at
+            ? new Date(firstPackage.imported_at).toLocaleString('zh-CN')
+            : '未知时间',
+          packages,
+          stats: {
+            total: packages.length,
+            scanned,
+            pending: packages.length - scanned
+          }
+        };
+      })
+      .sort((a, b) => {
+        // 按导入时间降序排序（最新的在前）
+        const aTime = a.packages[0]?.imported_at ? new Date(a.packages[0].imported_at).getTime() : 0;
+        const bTime = b.packages[0]?.imported_at ? new Date(b.packages[0].imported_at).getTime() : 0;
+        return bTime - aTime;
+      });
+
+    return result;
   }, [data]);
 
-  // Filter items for selected date
-  const selectedDateItems = useMemo(() => {
-    if (!selectedDate) return [];
-
-    const stats = dailyStats.find(s => s.date === selectedDate);
-    if (!stats) return [];
-
-    let items = stats.items;
-
-    // Apply search filter
-    if (searchTerm) {
-      items = items.filter(item =>
-        item.tracking_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.store_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.zone.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    return items;
-  }, [selectedDate, dailyStats, searchTerm]);
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-
-    const dateOnly = dateStr;
-    const todayStr = today.toISOString().split('T')[0];
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-    if (dateOnly === todayStr) return '今天';
-    if (dateOnly === yesterdayStr) return '昨天';
-
-    return date.toLocaleDateString('zh-CN', {
-      month: 'long',
-      day: 'numeric',
-      weekday: 'short'
-    });
+  // 导出批次数据
+  const handleExportBatch = (group: GroupedData) => {
+    exportBatchReport(group.packages, `${group.vehicleNumber}_${group.importDate}`);
   };
 
-  const totalStats = useMemo(() => {
-    return dailyStats.reduce((acc, day) => ({
-      total: acc.total + day.total,
-      scanned: acc.scanned + day.scanned,
-      missing: acc.missing + day.missing
-    }), { total: 0, scanned: 0, missing: 0 });
-  }, [dailyStats]);
+  // 删除批次
+  const handleDeleteBatch = (group: GroupedData) => {
+    if (!onDeleteBatch) return;
+
+    const message = `确定要删除批次吗？\n\n车牌号: ${group.vehicleNumber}\n导入时间: ${group.importDate}\n总计: ${group.stats.total} 条数据\n已扫描: ${group.stats.scanned} 条\n\n此操作不可恢复！`;
+
+    if (window.confirm(message)) {
+      onDeleteBatch(group.batchId);
+    }
+  };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-panel-bg border border-white/10 rounded-xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col">
+    <div
+      role="dialog"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'rgba(0, 0, 0, 0.5)',
+        zIndex: 50,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '1rem'
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: isDark ? '#1a1a2e' : '#ffffff',
+          borderRadius: '12px',
+          width: '100%',
+          maxWidth: '1400px',
+          maxHeight: '90vh',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+          border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e5e7eb'
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-white/10">
+        <div style={{
+          padding: '1.5rem',
+          borderBottom: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e5e7eb',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          background: isDark ? '#16213e' : '#f9fafb'
+        }}>
           <div>
-            <h2 className="text-xl font-bold text-white mb-1">数据总览 - 每日报表</h2>
-            <div className="flex gap-4 text-sm">
-              <span className="text-white/60">总计: <span className="text-white font-bold">{totalStats.total}</span></span>
-              <span className="text-success-green/60">已扫: <span className="text-success-green font-bold">{totalStats.scanned}</span></span>
-              <span className="text-error-red/60">缺货: <span className="text-error-red font-bold">{totalStats.missing}</span></span>
-            </div>
+            <h2 style={{
+              fontSize: '1.5rem',
+              fontWeight: 'bold',
+              color: isDark ? '#ffffff' : '#1a202c',
+              margin: 0
+            }}>
+              数据总览
+            </h2>
+            <p style={{
+              fontSize: '0.875rem',
+              color: isDark ? 'rgba(255,255,255,0.6)' : '#6b7280',
+              margin: '0.25rem 0 0 0'
+            }}>
+              共 {groupedData.length} 个批次，{data.length} 条记录
+            </p>
           </div>
           <button
             onClick={onClose}
-            className="size-10 flex items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 transition-colors"
-          >
-            <span className="material-symbols-outlined text-white">close</span>
-          </button>
-        </div>
-
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left Sidebar - Daily List */}
-          <div className="w-80 border-r border-white/10 flex flex-col">
-            <div className="p-4 border-b border-white/10">
-              <h3 className="text-white font-bold text-sm mb-2">日期列表</h3>
-              <p className="text-white/40 text-xs">点击查看详细数据</p>
-            </div>
-
-            <div className="flex-1 overflow-y-auto">
-              {dailyStats.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 text-white/40">
-                  <span className="material-symbols-outlined text-4xl mb-2">calendar_today</span>
-                  <p className="text-sm">暂无数据</p>
-                </div>
-              ) : (
-                <div className="p-2 space-y-2">
-                  {dailyStats.map((day) => (
-                    <button
-                      key={day.date}
-                      onClick={() => setSelectedDate(day.date)}
-                      className={`w-full p-4 rounded-lg border transition-all ${
-                        selectedDate === day.date
-                          ? 'bg-primary/20 border-primary'
-                          : 'bg-white/5 border-white/10 hover:bg-white/10'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-white font-bold">{formatDate(day.date)}</span>
-                        <span className="text-white/40 text-xs font-mono">{day.date}</span>
-                      </div>
-
-                      <div className="grid grid-cols-3 gap-2 text-xs">
-                        <div className="bg-white/5 rounded p-2">
-                          <div className="text-white/60 mb-1">总数</div>
-                          <div className="text-white font-bold text-lg">{day.total}</div>
-                        </div>
-                        <div className="bg-success-green/10 rounded p-2">
-                          <div className="text-success-green/60 mb-1">已扫</div>
-                          <div className="text-success-green font-bold text-lg">{day.scanned}</div>
-                        </div>
-                        <div className="bg-error-red/10 rounded p-2">
-                          <div className="text-error-red/60 mb-1">缺货</div>
-                          <div className="text-error-red font-bold text-lg">{day.missing}</div>
-                        </div>
-                      </div>
-
-                      {day.missing > 0 && (
-                        <div className="mt-2 flex items-center gap-1 text-error-red text-xs">
-                          <span className="material-symbols-outlined text-sm">warning</span>
-                          <span>缺货率: {((day.missing / day.total) * 100).toFixed(1)}%</span>
-                        </div>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Right Content - Detail View */}
-          <div className="flex-1 flex flex-col">
-            {selectedDate ? (
-              <>
-                {/* Search Bar */}
-                <div className="p-4 border-b border-white/10">
-                  <div className="relative">
-                    <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-sm">search</span>
-                    <input
-                      type="text"
-                      placeholder="搜索单号、门店、分区..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full bg-white/5 border border-white/10 rounded-lg pl-10 pr-4 py-2 text-sm text-white placeholder-white/40 focus:outline-none focus:border-primary/50"
-                    />
-                  </div>
-                </div>
-
-                {/* Table */}
-                <div className="flex-1 overflow-auto">
-                  <table className="w-full">
-                    <thead className="sticky top-0 bg-panel-bg border-b border-white/10">
-                      <tr>
-                        <th className="text-left p-4 text-xs font-bold text-white/60 uppercase">单号</th>
-                        <th className="text-left p-4 text-xs font-bold text-white/60 uppercase">分区</th>
-                        <th className="text-left p-4 text-xs font-bold text-white/60 uppercase">门店</th>
-                        <th className="text-left p-4 text-xs font-bold text-white/60 uppercase">状态</th>
-                        <th className="text-left p-4 text-xs font-bold text-white/60 uppercase">扫描时间</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedDateItems.map((item, index) => (
-                        <tr
-                          key={item.tracking_number}
-                          className={`border-b border-white/5 hover:bg-white/5 transition-colors ${
-                            index % 2 === 0 ? 'bg-white/[0.02]' : ''
-                          } ${item.is_empty_tracking ? 'opacity-60' : ''}`}
-                        >
-                          <td className="p-4 text-sm font-mono">
-                            {item.is_empty_tracking ? (
-                              <span className="text-white/40 italic">（空单号）</span>
-                            ) : (
-                              <span className="text-white">{item.tracking_number}</span>
-                            )}
-                          </td>
-                          <td className="p-4 text-sm text-white">
-                            <span className="px-2 py-1 bg-primary/20 text-primary rounded font-bold text-xs">
-                              {item.zone}
-                            </span>
-                          </td>
-                          <td className="p-4 text-sm text-white/80">{item.store_name}</td>
-                          <td className="p-4 text-sm">
-                            {item.is_empty_tracking ? (
-                              <span className="px-2 py-1 bg-yellow-500/20 text-yellow-500 rounded-full text-xs font-bold flex items-center gap-1 w-fit">
-                                <span className="material-symbols-outlined text-xs">help</span>
-                                无法判断
-                              </span>
-                            ) : item.status === 'scanned' ? (
-                              <span className="px-2 py-1 bg-success-green/20 text-success-green rounded-full text-xs font-bold flex items-center gap-1 w-fit">
-                                <span className="material-symbols-outlined text-xs">check_circle</span>
-                                已扫描
-                              </span>
-                            ) : (
-                              <span className="px-2 py-1 bg-error-red/20 text-error-red rounded-full text-xs font-bold flex items-center gap-1 w-fit">
-                                <span className="material-symbols-outlined text-xs">error</span>
-                                缺货
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-4 text-sm text-white/60">
-                            {item.scanned_at
-                              ? new Date(item.scanned_at).toLocaleString('zh-CN')
-                              : '-'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {selectedDateItems.length === 0 && (
-                    <div className="flex flex-col items-center justify-center py-12 text-white/40">
-                      <span className="material-symbols-outlined text-5xl mb-2">inbox</span>
-                      <p>没有找到匹配的数据</p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Footer */}
-                <div className="p-4 border-t border-white/10 flex items-center justify-between bg-panel-bg">
-                  <p className="text-sm text-white/60">
-                    显示 <span className="text-white font-bold">{selectedDateItems.length}</span> 条记录
-                  </p>
-                </div>
-              </>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-white/40">
-                <span className="material-symbols-outlined text-6xl mb-4">calendar_month</span>
-                <p className="text-lg">请选择日期查看详细数据</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Bottom Footer */}
-        <div className="p-4 border-t border-white/10 flex items-center justify-end">
-          <button
-            onClick={onClose}
-            className="px-6 py-2 bg-primary hover:bg-primary/80 text-white rounded-lg font-medium transition-colors"
+            style={{
+              padding: '0.5rem 1rem',
+              background: '#ef4444',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '0.875rem',
+              fontWeight: '500'
+            }}
           >
             关闭
           </button>
+        </div>
+
+        {/* Content - Grouped by Batch ID */}
+        <div style={{
+          flex: 1,
+          overflow: 'auto',
+          background: isDark ? '#1a1a2e' : '#ffffff',
+          padding: '1.5rem'
+        }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))',
+            gap: '1.5rem'
+          }}>
+            {groupedData.map((group) => (
+              <div
+                key={group.batchId}
+                style={{
+                  background: isDark ? 'rgba(255,255,255,0.03)' : '#f9fafb',
+                  borderRadius: '12px',
+                  border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e5e7eb',
+                  overflow: 'hidden',
+                  transition: 'all 0.2s',
+                  boxShadow: isDark ? '0 4px 12px rgba(0,0,0,0.3)' : '0 4px 12px rgba(0,0,0,0.1)'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-4px)';
+                  e.currentTarget.style.boxShadow = isDark ? '0 8px 24px rgba(0,0,0,0.4)' : '0 8px 24px rgba(0,0,0,0.15)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = isDark ? '0 4px 12px rgba(0,0,0,0.3)' : '0 4px 12px rgba(0,0,0,0.1)';
+                }}
+              >
+                {/* 批次头部 */}
+                <div style={{
+                  padding: '1.5rem',
+                  background: isDark ? 'rgba(102, 126, 234, 0.1)' : 'linear-gradient(135deg, #667eea, #764ba2)',
+                  borderBottom: isDark ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                  position: 'relative'
+                }}>
+                  {/* 删除按钮 */}
+                  {onDeleteBatch && (
+                    <button
+                      onClick={() => handleDeleteBatch(group)}
+                      style={{
+                        position: 'absolute',
+                        top: '1rem',
+                        right: '1rem',
+                        width: '32px',
+                        height: '32px',
+                        background: isDark ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 68, 68, 0.9)',
+                        color: isDark ? '#ef4444' : 'white',
+                        border: isDark ? '1px solid rgba(239, 68, 68, 0.4)' : 'none',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'all 0.2s',
+                        zIndex: 10
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#ef4444';
+                        e.currentTarget.style.color = 'white';
+                        e.currentTarget.style.transform = 'scale(1.1)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = isDark ? 'rgba(239, 68, 68, 0.2)' : 'rgba(239, 68, 68, 0.9)';
+                        e.currentTarget.style.color = isDark ? '#ef4444' : 'white';
+                        e.currentTarget.style.transform = 'scale(1)';
+                      }}
+                      title="删除批次"
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '1.125rem' }}>
+                        delete
+                      </span>
+                    </button>
+                  )}
+
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.75rem',
+                    marginBottom: '0.75rem'
+                  }}>
+                    <span className="material-symbols-outlined" style={{
+                      fontSize: '2rem',
+                      color: isDark ? '#667eea' : 'white'
+                    }}>
+                      local_shipping
+                    </span>
+                    <div>
+                      <h3 style={{
+                        fontSize: '1.25rem',
+                        fontWeight: 'bold',
+                        color: isDark ? '#ffffff' : 'white',
+                        margin: 0,
+                        paddingRight: '2rem' // 为删除按钮留空间
+                      }}>
+                        {group.vehicleNumber}
+                      </h3>
+                      <p style={{
+                        fontSize: '0.875rem',
+                        color: isDark ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.9)',
+                        margin: '0.25rem 0 0 0'
+                      }}>
+                        {group.importDate}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 统计信息 */}
+                <div style={{
+                  padding: '1.5rem',
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: '1rem'
+                }}>
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '1rem',
+                    background: isDark ? 'rgba(255,255,255,0.05)' : '#ffffff',
+                    borderRadius: '8px',
+                    border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid #e5e7eb'
+                  }}>
+                    <div style={{
+                      fontSize: '0.75rem',
+                      color: isDark ? 'rgba(255,255,255,0.6)' : '#6b7280',
+                      marginBottom: '0.5rem',
+                      fontWeight: '500'
+                    }}>
+                      总计
+                    </div>
+                    <div style={{
+                      fontSize: '2rem',
+                      fontWeight: 'bold',
+                      color: isDark ? '#ffffff' : '#1a202c',
+                      fontFamily: 'monospace'
+                    }}>
+                      {group.stats.total}
+                    </div>
+                  </div>
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '1rem',
+                    background: isDark ? 'rgba(16, 185, 129, 0.1)' : '#d1fae5',
+                    borderRadius: '8px',
+                    border: isDark ? '1px solid rgba(16, 185, 129, 0.3)' : 'none'
+                  }}>
+                    <div style={{
+                      fontSize: '0.75rem',
+                      color: '#10b981',
+                      marginBottom: '0.5rem',
+                      fontWeight: '500'
+                    }}>
+                      已扫描
+                    </div>
+                    <div style={{
+                      fontSize: '2rem',
+                      fontWeight: 'bold',
+                      color: '#10b981',
+                      fontFamily: 'monospace'
+                    }}>
+                      {group.stats.scanned}
+                    </div>
+                  </div>
+                  <div style={{
+                    textAlign: 'center',
+                    padding: '1rem',
+                    background: isDark ? 'rgba(245, 158, 11, 0.1)' : '#fef3c7',
+                    borderRadius: '8px',
+                    border: isDark ? '1px solid rgba(245, 158, 11, 0.3)' : 'none'
+                  }}>
+                    <div style={{
+                      fontSize: '0.75rem',
+                      color: '#f59e0b',
+                      marginBottom: '0.5rem',
+                      fontWeight: '500'
+                    }}>
+                      待扫描
+                    </div>
+                    <div style={{
+                      fontSize: '2rem',
+                      fontWeight: 'bold',
+                      color: '#f59e0b',
+                      fontFamily: 'monospace'
+                    }}>
+                      {group.stats.pending}
+                    </div>
+                  </div>
+                </div>
+
+                {/* 进度条 */}
+                <div style={{ padding: '0 1.5rem 1.5rem 1.5rem' }}>
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    marginBottom: '0.5rem'
+                  }}>
+                    <span style={{
+                      fontSize: '0.75rem',
+                      color: isDark ? 'rgba(255,255,255,0.6)' : '#6b7280',
+                      fontWeight: '500'
+                    }}>
+                      扫描进度
+                    </span>
+                    <span style={{
+                      fontSize: '0.875rem',
+                      fontWeight: 'bold',
+                      color: isDark ? '#ffffff' : '#1a202c',
+                      fontFamily: 'monospace'
+                    }}>
+                      {Math.round((group.stats.scanned / group.stats.total) * 100)}%
+                    </span>
+                  </div>
+                  <div style={{
+                    background: isDark ? 'rgba(255,255,255,0.1)' : '#e5e7eb',
+                    borderRadius: '999px',
+                    height: '8px',
+                    overflow: 'hidden'
+                  }}>
+                    <div style={{
+                      background: 'linear-gradient(90deg, #10b981, #34d399)',
+                      height: '100%',
+                      width: `${(group.stats.scanned / group.stats.total) * 100}%`,
+                      borderRadius: '999px',
+                      transition: 'width 0.5s ease',
+                      boxShadow: '0 0 8px rgba(16, 185, 129, 0.5)'
+                    }} />
+                  </div>
+                </div>
+
+                {/* 操作按钮 */}
+                <div style={{
+                  padding: '1rem 1.5rem 1.5rem 1.5rem',
+                  display: 'flex',
+                  gap: '0.75rem'
+                }}>
+                  {/* 开始扫描按钮 */}
+                  {onStartScan && (
+                    <button
+                      onClick={() => {
+                        onStartScan(group.batchId);
+                        onClose(); // 关闭数据总览，进入扫描界面
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: '0.875rem',
+                        background: activeBatchId === group.batchId
+                          ? 'linear-gradient(135deg, #10b981, #059669)'
+                          : 'linear-gradient(135deg, #667eea, #764ba2)',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '8px',
+                        cursor: 'pointer',
+                        fontSize: '0.875rem',
+                        fontWeight: '600',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.5rem',
+                        transition: 'all 0.2s',
+                        boxShadow: activeBatchId === group.batchId
+                          ? '0 4px 12px rgba(16, 185, 129, 0.4)'
+                          : '0 4px 12px rgba(102, 126, 234, 0.3)',
+                        position: 'relative'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-2px)';
+                        e.currentTarget.style.boxShadow = activeBatchId === group.batchId
+                          ? '0 6px 16px rgba(16, 185, 129, 0.5)'
+                          : '0 6px 16px rgba(102, 126, 234, 0.4)';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = activeBatchId === group.batchId
+                          ? '0 4px 12px rgba(16, 185, 129, 0.4)'
+                          : '0 4px 12px rgba(102, 126, 234, 0.3)';
+                      }}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: '1.25rem' }}>
+                        {activeBatchId === group.batchId ? 'check_circle' : 'barcode_scanner'}
+                      </span>
+                      {activeBatchId === group.batchId ? '正在扫描此批次' : '开始扫描'}
+                    </button>
+                  )}
+
+                  {/* 导出按钮 */}
+                  <button
+                    onClick={() => handleExportBatch(group)}
+                    style={{
+                      flex: onStartScan ? 0.6 : 1,
+                      padding: '0.875rem',
+                      background: isDark ? 'rgba(255,255,255,0.1)' : '#f3f4f6',
+                      color: isDark ? '#ffffff' : '#1a202c',
+                      border: isDark ? '1px solid rgba(255,255,255,0.2)' : '1px solid #e5e7eb',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontSize: '0.875rem',
+                      fontWeight: '600',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '0.5rem',
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.15)' : '#e5e7eb';
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = isDark ? 'rgba(255,255,255,0.1)' : '#f3f4f6';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                    }}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: '1.25rem' }}>
+                      download
+                    </span>
+                    导出
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* 空状态 */}
+          {groupedData.length === 0 && (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '400px',
+              color: isDark ? 'rgba(255,255,255,0.4)' : '#9ca3af'
+            }}>
+              <span className="material-symbols-outlined" style={{ fontSize: '5rem', marginBottom: '1rem' }}>
+                inventory_2
+              </span>
+              <p style={{ margin: 0, fontSize: '1.125rem', fontWeight: '500' }}>暂无数据</p>
+              <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.875rem' }}>请先导入Excel文件</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

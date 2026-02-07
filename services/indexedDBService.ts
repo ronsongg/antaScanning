@@ -10,7 +10,7 @@ class IndexedDBService {
   // 初始化数据库
   async init(): Promise<void> {
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      const request = window.indexedDB.open(DB_NAME, DB_VERSION);
 
       request.onerror = () => reject(request.error);
       request.onsuccess = () => {
@@ -39,6 +39,12 @@ class IndexedDBService {
   // 批量保存数据
   async saveAll(packages: PackageData[]): Promise<void> {
     if (!this.db) await this.init();
+
+    // 如果是空数组，直接返回成功
+    if (packages.length === 0) {
+      console.log('[IndexedDB] 空数据，跳过保存');
+      return Promise.resolve();
+    }
 
     return new Promise((resolve, reject) => {
       const transaction = this.db!.transaction([STORE_NAME], 'readwrite');
@@ -128,7 +134,7 @@ class IndexedDBService {
     }
 
     return new Promise((resolve, reject) => {
-      const request = indexedDB.deleteDatabase(DB_NAME);
+      const request = window.indexedDB.deleteDatabase(DB_NAME);
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
     });

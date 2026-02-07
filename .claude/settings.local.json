@@ -3,7 +3,19 @@
     "allow": [
       "Bash(\"启动服务.bat\" << 'EOF'\n@echo off\necho ======================================\necho   Starting Development Server\necho ======================================\necho.\n\nif not exist \"node_modules\" \\(\n    echo Installing dependencies...\n    call npm install\n\\)\n\necho Starting server...\necho.\n\nnpx vite\n\npause\nEOF)",
       "Bash(git init:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git config:*)",
+      "Bash(git remote add:*)",
+      "Bash(git branch:*)",
+      "Bash(git push:*)",
+      "Bash(test:*)",
+      "Bash(dir /B /A)",
+      "Bash(npm install jsonwebtoken jwt-decode)",
+      "Bash(npm run dev)",
+      "Bash(npm ls react react-dom @supabase/supabase-js)",
+      "Bash(npm uninstall jsonwebtoken)",
+      "Bash(ls:*)"
     ]
   }
 }
