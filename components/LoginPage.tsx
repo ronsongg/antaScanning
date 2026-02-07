@@ -2,7 +2,7 @@
  * 登录页面
  */
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import type { LoginCredentials } from '../types';
 
@@ -84,6 +84,7 @@ export function LoginPage() {
                 border: '1px solid #d1d5db',
                 borderRadius: '6px',
                 fontSize: '1rem',
+                color: '#1a202c',
                 outline: 'none',
                 transition: 'border-color 0.2s'
               }}
@@ -117,6 +118,7 @@ export function LoginPage() {
                   border: '1px solid #d1d5db',
                   borderRadius: '6px',
                   fontSize: '1rem',
+                  color: '#1a202c',
                   outline: 'none',
                   transition: 'border-color 0.2s'
                 }}

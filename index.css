@@ -1,15 +1,14 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "./tailwind.config.js";
 
 :root {
-  --background-light: #f6f6f8;
-  --background-dark: #0a0f1a;
-  --panel-bg: #161e2d;
-  --primary: #135bec;
-  --primary-hover: #0e4bce;
-  --success-green: #10b981;
-  --error-red: #ef4444;
+    --background-light: #f6f6f8;
+    --background-dark: #0a0f1a;
+    --panel-bg: #161e2d;
+    --primary: #135bec;
+    --primary-hover: #0e4bce;
+    --success-green: #10b981;
+    --error-red: #ef4444;
 }
 
 body {
@@ -33,17 +32,22 @@ body {
 .no-scrollbar::-webkit-scrollbar {
     display: none;
 }
+
 .no-scrollbar {
-    -ms-overflow-style: none;  /* IE and Edge */
-    scrollbar-width: none;  /* Firefox */
+    -ms-overflow-style: none;
+    /* IE and Edge */
+    scrollbar-width: none;
+    /* Firefox */
 }
-      
+
 .custom-scrollbar::-webkit-scrollbar {
     width: 4px;
 }
+
 .custom-scrollbar::-webkit-scrollbar-track {
     background: var(--background-dark);
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb {
     background: #324467;
     border-radius: 10px;
