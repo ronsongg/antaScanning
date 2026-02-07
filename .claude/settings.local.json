@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"启动服务.bat\" << 'EOF'\n@echo off\necho ======================================\necho   Starting Development Server\necho ======================================\necho.\n\nif not exist \"node_modules\" \\(\n    echo Installing dependencies...\n    call npm install\n\\)\n\necho Starting server...\necho.\n\nnpx vite\n\npause\nEOF)",
+      "Bash(git init:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

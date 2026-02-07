@@ -1,0 +1,7 @@
+{
+  "name": "Anta Scanning System",
+  "description": "High-performance logistics scanning and matching system with Supabase synchronization and voice feedback.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
