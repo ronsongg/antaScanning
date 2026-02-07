@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background-light: #f6f6f8;
+  --background-dark: #0a0f1a;
+  --panel-bg: #161e2d;
+  --primary: #135bec;
+  --primary-hover: #0e4bce;
+  --success-green: #10b981;
+  --error-red: #ef4444;
+}
+
+body {
+    overscroll-behavior: none;
+    transition: background-color 0.3s ease;
+}
+
+/* Dark mode */
+.dark body {
+    background-color: var(--background-dark);
+    color: white;
+}
+
+/* Light mode */
+.light body {
+    background-color: var(--background-light);
+    color: black;
+}
+
+/* Scrollbar styles */
+.no-scrollbar::-webkit-scrollbar {
+    display: none;
+}
+.no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+}
+      
+.custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: var(--background-dark);
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #324467;
+    border-radius: 10px;
+}
+
+.glass-panel {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+}

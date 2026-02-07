@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>密码哈希生成器</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            padding: 2.5rem;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            max-width: 600px;
+            width: 100%;
+        }
+        h1 { font-size: 1.875rem; margin-bottom: 1rem; color: #1a202c; }
+        .warning {
+            background: #fef3c7;
+            border: 1px solid #fbbf24;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            font-size: 0.875rem;
+            color: #78350f;
+        }
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-bottom: 0.5rem;
+            color: #374151;
+        }
+        input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+        button {
+            width: 100%;
+            padding: 0.875rem;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            margin-bottom: 1rem;
+        }
+        button:hover { background: #5568d3; }
+        button:disabled { background: #9ca3af; cursor: not-allowed; }
+        .result {
+            margin-top: 1.5rem;
+        }
+        .hash-box {
+            padding: 1rem;
+            background: #f3f4f6;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.75rem;
+            word-break: break-all;
+            border: 1px solid #d1d5db;
+            margin-bottom: 1rem;
+        }
+        .sql-box {
+            padding: 1rem;
+            background: #1e1e1e;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 0.875rem;
+            color: #00ff00;
+            word-break: break-all;
+            margin-top: 0.5rem;
+        }
+        .success { background: #10b981; }
+        .steps {
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background: #f9fafb;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+        .steps h2 { font-size: 1.125rem; margin-bottom: 1rem; }
+        .steps ol { padding-left: 1.5rem; line-height: 1.8; color: #4b5563; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 密码哈希生成器</h1>
+
+        <div class="warning">
+            ⚠️ <strong>重要：</strong>这是用于生成管理员密码哈希的工具。生成后需要在 Supabase SQL Editor 中执行 SQL 更新数据库。
+        </div>
+
+        <div class="form-group">
+            <label>输入密码</label>
+            <input type="text" id="password" value="admin123" placeholder="admin123">
+        </div>
+
+        <button id="generateBtn" onclick="generateHash()">生成密码哈希</button>
+
+        <div id="result" style="display: none;">
+            <div class="form-group">
+                <label>密码哈希（复制到数据库）</label>
+                <div class="hash-box" id="hashOutput"></div>
+            </div>
+
+            <div style="background: #e0e7ff; padding: 1rem; border-radius: 6px; border: 1px solid #818cf8; margin-bottom: 1rem;">
+                <label style="color: #3730a3; font-weight: 600;">在 Supabase SQL Editor 中执行以下 SQL：</label>
+                <div class="sql-box" id="sqlOutput"></div>
+            </div>
+
+            <button id="copyBtn" onclick="copySQL()">复制 SQL 语句</button>
+        </div>
+
+        <div class="steps">
+            <h2>📋 使用步骤</h2>
+            <ol>
+                <li>确保密码输入框中是 <code>admin123</code>（或你想设置的密码）</li>
+                <li>点击 "生成密码哈希" 按钮</li>
+                <li>点击 "复制 SQL 语句" 按钮</li>
+                <li>打开 <a href="https://supabase.com/dashboard" target="_blank">Supabase Dashboard</a> → SQL Editor</li>
+                <li>粘贴并执行 SQL 语句</li>
+                <li>返回登录页面，使用 admin/admin123 登录</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        let generatedHash = '';
+
+        async function generateHash() {
+            const password = document.getElementById('password').value;
+            if (!password) {
+                alert('请输入密码');
+                return;
+            }
+
+            const btn = document.getElementById('generateBtn');
+            btn.disabled = true;
+            btn.textContent = '生成中...';
+
+            try {
+                const encoder = new TextEncoder();
+                const salt = crypto.getRandomValues(new Uint8Array(16));
+                const saltHex = Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('');
+
+                const passwordBuffer = encoder.encode(password);
+                const keyMaterial = await crypto.subtle.importKey('raw', passwordBuffer, 'PBKDF2', false, ['deriveBits']);
+                const hashBuffer = await crypto.subtle.deriveBits(
+                    { name: 'PBKDF2', salt: salt, iterations: 100000, hash: 'SHA-256' },
+                    keyMaterial,
+                    256
+                );
+
+                const hashArray = new Uint8Array(hashBuffer);
+                const hashHex = Array.from(hashArray).map(b => b.toString(16).padStart(2, '0')).join('');
+                generatedHash = `${saltHex}:${hashHex}`;
+
+                document.getElementById('hashOutput').textContent = generatedHash;
+                document.getElementById('sqlOutput').textContent = `UPDATE users SET password_hash = '${generatedHash}' WHERE username = 'admin';`;
+                document.getElementById('result').style.display = 'block';
+            } catch (err) {
+                alert('生成失败：' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '生成密码哈希';
+            }
+        }
+
+        function copySQL() {
+            const sql = `UPDATE users SET password_hash = '${generatedHash}' WHERE username = 'admin';`;
+            navigator.clipboard.writeText(sql).then(() => {
+                const btn = document.getElementById('copyBtn');
+                const originalText = btn.textContent;
+                btn.textContent = '✓ 已复制 SQL 语句';
+                btn.classList.add('success');
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                    btn.classList.remove('success');
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>

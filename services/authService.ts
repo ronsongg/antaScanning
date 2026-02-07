@@ -88,6 +88,7 @@ export async function login(credentials: LoginCredentials): Promise<AuthToken> {
       .single();
 
     if (error || !data) {
+      console.warn('Login lookup failed:', error);
       recordFailedAttempt();
       throw new Error('用户名或密码错误');
     }
